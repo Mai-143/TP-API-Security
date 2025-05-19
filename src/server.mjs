@@ -20,11 +20,13 @@ const Server = class Server {
     try {
       const host = this.config.mongodb;
 
-      this.connect = await mongoose.createConnection(host, {
+      await mongoose.connect(host, {
         useNewUrlParser: true,
         useUnifiedTopology: true
       });
 
+      this.connect = mongoose.connection;
+      console.log('connected');
       const close = () => {
         this.connect.close((error) => {
           if (error) {
@@ -70,7 +72,8 @@ const Server = class Server {
 
   routes() {
     new routes.Users(this.app, this.connect);
-
+    this.app.use(routes.albumRoutes);
+    this.app.use(routes.photoRoutes);
     this.app.use((req, res) => {
       res.status(404).json({
         code: 404,
