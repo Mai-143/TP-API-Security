@@ -22,3 +22,4 @@ const Schema = new mongoose.Schema({
 });
 
 export default Schema;
+

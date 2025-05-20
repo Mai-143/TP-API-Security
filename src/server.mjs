@@ -5,20 +5,29 @@ import bodyParser from 'body-parser';
 import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
-
-// Core
 import config from './config.mjs';
 import routes from './controllers/routes.mjs';
 
 const Server = class Server {
   constructor() {
+    const env = process.argv[2] || 'development';
+    this.config = config[env];
+
+    if (!this.config) {
+      console.error(`[ERROR] Environnement "${env}" non défini dans config.mjs`);
+      process.exit(1);
+    }
+
+    console.log(`[INFO] Environnement utilisé : ${env}`);
     this.app = express();
-    this.config = config[process.argv[2]] || config.development;
   }
 
   async dbConnect() {
     try {
       const host = this.config.mongodb;
+      if (!host) {
+        throw new Error('URL MongoDB manquante dans la configuration');
+      }
 
       await mongoose.connect(host, {
         useNewUrlParser: true,
@@ -26,40 +35,36 @@ const Server = class Server {
       });
 
       this.connect = mongoose.connection;
-      console.log('connected');
+      console.log('[✅] MongoDB connecté');
+
       const close = () => {
         this.connect.close((error) => {
           if (error) {
-            console.error('[ERROR] api dbConnect() close() -> mongodb error', error);
+            console.error('[ERROR] dbConnect() close() ->', error);
           } else {
-            console.log('[CLOSE] api dbConnect() -> mongodb closed');
+            console.log('[CLOSE] dbConnect() -> connexion MongoDB fermée');
           }
         });
       };
 
       this.connect.on('error', (err) => {
-        setTimeout(() => {
-          console.log('[ERROR] api dbConnect() -> mongodb error');
-          this.connect = this.dbConnect(host);
-        }, 5000);
-
-        console.error(`[ERROR] api dbConnect() -> ${err}`);
+        console.error('[ERROR] dbConnect() ->', err);
+        setTimeout(() => this.dbConnect(), 5000);
       });
 
       this.connect.on('disconnected', () => {
-        setTimeout(() => {
-          console.log('[DISCONNECTED] api dbConnect() -> mongodb disconnected');
-          this.connect = this.dbConnect(host);
-        }, 5000);
+        console.log('[DISCONNECTED] dbConnect() -> reconnexion dans 5s');
+        setTimeout(() => this.dbConnect(), 5000);
       });
 
       process.on('SIGINT', () => {
         close();
-        console.log('[API END PROCESS] api dbConnect() -> close mongodb connection');
+        console.log('[API] Fin du process - connexion MongoDB fermée');
         process.exit(0);
       });
+
     } catch (err) {
-      console.error(`[ERROR] api dbConnect() -> ${err}`);
+      console.error('[❌ Erreur MongoDB] :', err.message);
     }
   }
 
@@ -75,10 +80,7 @@ const Server = class Server {
     this.app.use(routes.albumRoutes);
     this.app.use(routes.photoRoutes);
     this.app.use((req, res) => {
-      res.status(404).json({
-        code: 404,
-        message: 'Not Found'
-      });
+      res.status(404).json({ code: 404, message: 'Not Found' });
     });
   }
 
@@ -93,9 +95,11 @@ const Server = class Server {
       this.security();
       this.middleware();
       this.routes();
-      this.app.listen(this.config.port);
+      this.app.listen(this.config.port, () =>
+        console.log(`[🚀] Serveur démarré sur le port ${this.config.port}`)
+      );
     } catch (err) {
-      console.error(`[ERROR] Server -> ${err}`);
+      console.error('[ERROR] Server ->', err.message);
     }
   }
 };
